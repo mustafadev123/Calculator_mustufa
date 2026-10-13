@@ -146,6 +146,58 @@ void main() {
     });
   });
 
+  group('Backspace key', () {
+    testWidgets('tap deletes the last digit', (tester) async {
+      await tester.pumpWidget(const CalculatorApp());
+      await tapKeys(tester, ['4', '5', '6', 'backspace']);
+      expect(displayText(tester), '45');
+    });
+
+    testWidgets('long-press clears everything with a confirmation', (tester) async {
+      await tester.pumpWidget(const CalculatorApp());
+      await tapKeys(tester, ['9', 'multiply', '9']);
+      await tester.longPress(find.byKey(const Key('key_backspace')));
+      await tester.pumpAndSettle();
+      expect(displayText(tester), '0');
+      expect(expressionText(tester), '');
+      expect(phaseText(tester), 'READY');
+      expect(find.text('All cleared'), findsOneWidget);
+    });
+
+    testWidgets('refused delete on a result shakes the display', (tester) async {
+      await tester.pumpWidget(const CalculatorApp());
+      await tapKeys(tester, ['2', 'add', '2', 'equals']);
+      final panel = find.byKey(const Key('display_value'));
+      final restX = tester.getTopLeft(panel).dx;
+
+      await tester.tap(find.byKey(const Key('key_backspace')));
+      await tester.pump(); // rebuild starts the shake at t = 0
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(tester.getTopLeft(panel).dx, isNot(restX)); // mid-shake
+
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(panel).dx, restX); // settles back
+      expect(displayText(tester), '4');
+    });
+
+    testWidgets('announces delete with a hold hint', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(const CalculatorApp());
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('delete')),
+        matchesSemantics(
+          label: 'delete',
+          hint: 'hold to clear all',
+          isButton: true,
+          hasSelectedState: true,
+          hasTapAction: true,
+          hasLongPressAction: true,
+        ),
+      );
+      handle.dispose();
+    });
+  });
+
   testWidgets('fits a small 320×568 screen with the tape open', (tester) async {
     tester.view.physicalSize = const Size(320, 568);
     tester.view.devicePixelRatio = 1;

@@ -2,7 +2,8 @@ import 'package:calculator_app/logic/calculator_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Simulates key presses on [engine]. Accepts digits, `.`, `+ − - × * ÷ /`,
-/// `=` and `C` (for AC). Spaces are ignored so traces stay readable.
+/// `=`, `C` (for AC) and `<` (for ⌫). Spaces are ignored so traces stay
+/// readable.
 void press(CalculatorEngine engine, String keys) {
   for (final key in keys.split('')) {
     switch (key) {
@@ -22,6 +23,8 @@ void press(CalculatorEngine engine, String keys) {
         engine.equals();
       case 'C':
         engine.allClear();
+      case '<':
+        engine.backspace();
       default:
         engine.inputDigit(int.parse(key));
     }
@@ -293,6 +296,108 @@ void main() {
         press(calc, '1 + 1 =');
       }
       expect(calc.history, hasLength(CalculatorEngine.historyLength));
+    });
+  });
+
+  group('Backspace / delete (graduate feature)', () {
+    test('removes the last digit', () {
+      press(calc, '123 <');
+      expect(calc.display, '12');
+      expect(calc.lastTransition!.note, 'remove 3');
+    });
+
+    test('removes a decimal point, which can then be typed again', () {
+      press(calc, '1.5 <');
+      expect(calc.display, '1.');
+      press(calc, '<');
+      expect(calc.display, '1');
+      expect(calc.lastTransition!.note, 'remove point');
+      press(calc, '.2');
+      expect(calc.display, '1.2');
+    });
+
+    test('0. → 0 → ready', () {
+      press(calc, '. <');
+      expect(calc.display, '0');
+      expect(calc.phase, CalcPhase.enteringOperand);
+      press(calc, '<');
+      expect(calc.phase, CalcPhase.ready);
+    });
+
+    test('deleting the only digit of the first operand returns to ready', () {
+      press(calc, '7 <');
+      expect(calc.display, '0');
+      expect(calc.phase, CalcPhase.ready);
+      expect(calc.lastTransition!.note, 'remove 7, operand empty');
+    });
+
+    test('emptying the second operand goes back to awaiting the operand', () {
+      press(calc, '2 + 3 <');
+      expect(calc.phase, CalcPhase.awaitingOperand);
+      expect(calc.display, '2');
+      expect(calc.expression, '2 +');
+      // The operator can now be replaced as usual.
+      press(calc, '× 4 =');
+      expect(calc.display, '8');
+    });
+
+    test('after an operator it removes the pending operator, keeping the total', () {
+      press(calc, '2 + 3 × <');
+      expect(calc.display, '5');
+      expect(calc.pendingOperator, isNull);
+      expect(calc.expression, '');
+      expect(calc.phase, CalcPhase.enteringOperand);
+      expect(calc.lastTransition!.note, 'remove pending ×');
+      press(calc, '− 1 =');
+      expect(calc.display, '4');
+    });
+
+    test('the kept running total is removed as a whole, not digit by digit', () {
+      press(calc, '12 + 13 × <');
+      expect(calc.display, '25');
+      press(calc, '<');
+      expect(calc.display, '0');
+      expect(calc.phase, CalcPhase.ready);
+    });
+
+    test('a recalled history value is removed as a whole', () {
+      press(calc, '60 + 40 = C 3 +');
+      calc.recall(calc.history.single);
+      expect(calc.display, '100');
+      press(calc, '<');
+      expect(calc.lastTransition!.note, 'remove recalled value, operand empty');
+      expect(calc.phase, CalcPhase.awaitingOperand);
+      expect(calc.display, '3');
+    });
+
+    test('on a result it is refused and reports no change', () {
+      press(calc, '2 + 2 =');
+      expect(calc.backspace(), isFalse);
+      expect(calc.display, '4');
+      expect(calc.phase, CalcPhase.result);
+      expect(calc.lastTransition!.note, 'ignored: result is final');
+    });
+
+    test('on a fresh calculator it is refused', () {
+      expect(calc.backspace(), isFalse);
+      expect(calc.lastTransition!.note, 'ignored: nothing to delete');
+    });
+
+    test('dismisses an error', () {
+      press(calc, '5 ÷ 0 =');
+      expect(calc.backspace(), isTrue);
+      expect(calc.phase, CalcPhase.ready);
+      expect(calc.display, '0');
+    });
+
+    test('long-press clears everything and is labelled on the tape', () {
+      press(calc, '8 × 3 + 1');
+      calc.allClear(fromLongPress: true);
+      expect(calc.display, '0');
+      expect(calc.accumulator, isNull);
+      expect(calc.pendingOperator, isNull);
+      expect(calc.lastTransition!.input, '⌫');
+      expect(calc.lastTransition!.note, 'long-press: reset everything');
     });
   });
 

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../logic/calculator_engine.dart';
 import '../widgets/display_panel.dart';
 import '../widgets/history_sheet.dart';
 import '../widgets/keypad.dart';
+import '../widgets/shake.dart';
 
 /// Owns the single [CalculatorEngine]. Every key goes through [_run], so all
 /// UI updates come from engine state via one `setState()` call.
@@ -18,8 +20,30 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   final CalculatorEngine _engine = CalculatorEngine();
   bool _showTape = false;
 
+  /// Bumped when a key press is refused; makes the display shake.
+  int _shakeTick = 0;
+
   void _run(void Function(CalculatorEngine engine) action) {
     setState(() => action(_engine));
+  }
+
+  void _backspace() {
+    setState(() {
+      if (!_engine.backspace()) {
+        HapticFeedback.vibrate();
+        _shakeTick++;
+      }
+    });
+  }
+
+  void _backspaceHold() {
+    _run((e) => e.allClear(fromLongPress: true));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('All cleared'),
+        duration: Duration(milliseconds: 1200),
+      ));
   }
 
   void _openHistory() {
@@ -60,11 +84,14 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
             children: [
               Expanded(
                 flex: 2,
-                child: DisplayPanel(
-                  engine: _engine,
-                  showTape: _showTape,
-                  onToggleTape: () => setState(() => _showTape = !_showTape),
-                  onOpenHistory: _openHistory,
+                child: Shake(
+                  trigger: _shakeTick,
+                  child: DisplayPanel(
+                    engine: _engine,
+                    showTape: _showTape,
+                    onToggleTape: () => setState(() => _showTape = !_showTape),
+                    onOpenHistory: _openHistory,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -79,6 +106,8 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                   onOperator: (op) => _run((e) => e.chooseOperator(op)),
                   onEquals: () => _run((e) => e.equals()),
                   onAllClear: () => _run((e) => e.allClear()),
+                  onBackspace: _backspace,
+                  onBackspaceHold: _backspaceHold,
                 ),
               ),
             ],

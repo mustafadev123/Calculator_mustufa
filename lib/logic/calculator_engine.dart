@@ -300,11 +300,67 @@ class CalculatorEngine {
   }
 
   /// AC: wipes operand, accumulator, pending operator and result phase.
-  void allClear() {
-    _step('AC', () {
+  /// Also reached by long-pressing ⌫, which is labelled as such on the tape.
+  void allClear({bool fromLongPress = false}) {
+    _step(fromLongPress ? '⌫' : 'AC', () {
       _reset();
-      return 'reset everything';
+      return fromLongPress ? 'long-press: reset everything' : 'reset everything';
     });
+  }
+
+  /// ⌫: steps back one input. Returns false when there was nothing to
+  /// delete, so the UI can give "can't do that" feedback.
+  ///
+  /// - typing: drop the last character (`1.5` → `1.` → `1`)
+  /// - last character of an operand: back to the previous phase
+  ///   (`2 + 3` → `2 +`, or `7` → ready)
+  /// - recalled value: removed as a whole
+  /// - just chose an operator: un-choose it, keeping the running total
+  ///   (`2 + 3 ×` → `5`)
+  /// - result: ignored, a finished result is not edited digit by digit
+  /// - error: dismissed
+  bool backspace() {
+    var changed = true;
+    _step('⌫', () {
+      switch (_phase) {
+        case CalcPhase.ready:
+          changed = false;
+          return 'ignored: nothing to delete';
+        case CalcPhase.result:
+          changed = false;
+          return 'ignored: result is final';
+        case CalcPhase.error:
+          _reset();
+          return 'dismiss error';
+        case CalcPhase.awaitingOperand:
+          final op = _pending!;
+          _entry = format(_accumulator!);
+          _entryRecalled = true;
+          _accumulator = null;
+          _pending = null;
+          _phase = CalcPhase.enteringOperand;
+          return 'remove pending ${op.symbol}';
+        case CalcPhase.enteringOperand:
+          final String note;
+          if (_entryRecalled) {
+            _entry = '';
+            note = 'remove recalled value';
+          } else {
+            final removed = _entry[_entry.length - 1];
+            _entry = _entry.substring(0, _entry.length - 1);
+            note = removed == '.' ? 'remove point' : 'remove $removed';
+          }
+          // "0" counts as empty here, otherwise ⌫ on a lone 0 would be a no-op.
+          if (_entry.isEmpty || _entry == '-' || (_entry == '0' && note != 'remove point')) {
+            _entry = '0';
+            _entryRecalled = false;
+            _phase = _pending == null ? CalcPhase.ready : CalcPhase.awaitingOperand;
+            return '$note, operand empty';
+          }
+          return note;
+      }
+    });
+    return changed;
   }
 
   // ---------------------------------------------------------------------------

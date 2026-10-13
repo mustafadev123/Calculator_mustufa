@@ -14,6 +14,8 @@ class Keypad extends StatelessWidget {
     required this.onOperator,
     required this.onEquals,
     required this.onAllClear,
+    required this.onBackspace,
+    required this.onBackspaceHold,
   });
 
   /// Shown as selected while waiting for the next operand.
@@ -23,6 +25,8 @@ class Keypad extends StatelessWidget {
   final ValueChanged<Operator> onOperator;
   final VoidCallback onEquals;
   final VoidCallback onAllClear;
+  final VoidCallback onBackspace;
+  final VoidCallback onBackspaceHold;
 
   static const _spoken = {
     Operator.add: 'plus',
@@ -61,8 +65,18 @@ class Keypad extends StatelessWidget {
             label: 'AC',
             semanticLabel: 'all clear',
             kind: CalcButtonKind.action,
-            flex: 3,
+            flex: 2,
             onPressed: onAllClear,
+          ),
+          CalcButton(
+            key: const Key('key_backspace'),
+            label: '⌫',
+            icon: Icons.backspace_outlined,
+            semanticLabel: 'delete',
+            semanticHint: 'hold to clear all',
+            kind: CalcButtonKind.action,
+            onPressed: onBackspace,
+            onLongPress: onBackspaceHold,
           ),
           _operator(Operator.divide),
         ]),
