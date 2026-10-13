@@ -341,24 +341,30 @@ void main() {
       expect(calc.display, '8');
     });
 
-    test('after an operator it removes the pending operator, keeping the total', () {
-      press(calc, '2 + 3 × <');
-      expect(calc.display, '5');
-      expect(calc.pendingOperator, isNull);
-      expect(calc.expression, '');
-      expect(calc.phase, CalcPhase.enteringOperand);
-      expect(calc.lastTransition!.note, 'remove pending ×');
-      press(calc, '− 1 =');
-      expect(calc.display, '4');
-    });
+    test(
+      'after an operator it removes the pending operator, keeping the total',
+      () {
+        press(calc, '2 + 3 × <');
+        expect(calc.display, '5');
+        expect(calc.pendingOperator, isNull);
+        expect(calc.expression, '');
+        expect(calc.phase, CalcPhase.enteringOperand);
+        expect(calc.lastTransition!.note, 'remove pending ×');
+        press(calc, '− 1 =');
+        expect(calc.display, '4');
+      },
+    );
 
-    test('the kept running total is removed as a whole, not digit by digit', () {
-      press(calc, '12 + 13 × <');
-      expect(calc.display, '25');
-      press(calc, '<');
-      expect(calc.display, '0');
-      expect(calc.phase, CalcPhase.ready);
-    });
+    test(
+      'the kept running total is removed as a whole, not digit by digit',
+      () {
+        press(calc, '12 + 13 × <');
+        expect(calc.display, '25');
+        press(calc, '<');
+        expect(calc.display, '0');
+        expect(calc.phase, CalcPhase.ready);
+      },
+    );
 
     test('a recalled history value is removed as a whole', () {
       press(calc, '60 + 40 = C 3 +');
@@ -383,10 +389,11 @@ void main() {
       expect(calc.lastTransition!.note, 'ignored: nothing to delete');
     });
 
-    test('dismisses an error', () {
+    test('on an error it steps back to before the failing step', () {
       press(calc, '5 ÷ 0 =');
       expect(calc.backspace(), isTrue);
-      expect(calc.phase, CalcPhase.ready);
+      expect(calc.phase, CalcPhase.enteringOperand);
+      expect(calc.expression, '5 ÷');
       expect(calc.display, '0');
     });
 
@@ -398,6 +405,161 @@ void main() {
       expect(calc.pendingOperator, isNull);
       expect(calc.lastTransition!.input, '⌫');
       expect(calc.lastTransition!.note, 'long-press: reset everything');
+    });
+  });
+
+  group('Advanced error handling (graduate feature)', () {
+    /// 999999999999999 (15 digits, ≈1e15) multiplied by itself [times] times.
+    String bigChain(int times) =>
+        '999999999999999${' × 999999999999999' * times}';
+
+    /// 0.00000000000001 (1e-14, 15 digits) multiplied by itself [times] times.
+    String tinyChain(int times) =>
+        '0.00000000000001${' × 0.00000000000001' * times}';
+
+    test('division by zero gives a typed error with a recovery hint', () {
+      press(calc, '8 ÷ 0 =');
+      expect(calc.error, CalcError.divideByZero);
+      expect(calc.display, 'Can\'t divide by zero');
+      expect(calc.hint, CalcError.divideByZero.hint);
+      expect(calc.lastTransition!.note, 'error: Can\'t divide by zero');
+    });
+
+    test('0 ÷ 0 is division by zero, not NaN', () {
+      press(calc, '0 ÷ 0 =');
+      expect(calc.error, CalcError.divideByZero);
+    });
+
+    test('⌫ after ÷ 0 lets the divisor be fixed', () {
+      press(calc, '8 ÷ 0 = <');
+      expect(calc.expression, '8 ÷');
+      expect(calc.display, '0');
+      press(calc, '< 2 =');
+      expect(calc.display, '4');
+      expect(calc.history.single.toString(), '8 ÷ 2 = 4');
+    });
+
+    test('⌫ after an error raised by an operator restores that state', () {
+      press(calc, '6 + 2 ÷ 0 ×'); // 8 ÷ 0 fails when × is pressed
+      expect(calc.error, CalcError.divideByZero);
+      press(calc, '<');
+      expect(calc.expression, '8 ÷');
+      expect(calc.display, '0');
+      expect(calc.pendingOperator, Operator.divide);
+    });
+
+    test('a failed step leaves no accumulator or pending operator behind', () {
+      press(calc, '9 ÷ 0 =');
+      expect(calc.accumulator, isNull);
+      expect(calc.pendingOperator, isNull);
+      expect(calc.expression, '');
+    });
+
+    test('overflow beyond 1e100 is reported, not shown as a huge number', () {
+      // (≈1e15)^7 ≈ 1e105
+      press(calc, '${bigChain(6)} =');
+      expect(calc.error, CalcError.overflow);
+      expect(calc.display, 'Result too large');
+    });
+
+    test('values just inside the range still work', () {
+      // (1e15 − 1)^6 ≈ 1e90, which rounds to 1e+90 at 12 significant digits
+      press(calc, '${bigChain(5)} =');
+      expect(calc.phase, CalcPhase.result);
+      expect(calc.display, '1e+90');
+    });
+
+    test('overflow mid-chain is caught when the next operator is pressed', () {
+      press(calc, '${bigChain(6)} +');
+      expect(calc.error, CalcError.overflow);
+      press(calc, '<');
+      expect(calc.phase, CalcPhase.enteringOperand);
+      expect(calc.pendingOperator, Operator.multiply);
+    });
+
+    test('underflow below 1e-100 is reported', () {
+      // (1e-14)^8 = 1e-112
+      press(calc, '${tinyChain(7)} =');
+      expect(calc.error, CalcError.underflow);
+      expect(calc.display, 'Result too small');
+    });
+
+    test('exactly zero is not underflow', () {
+      press(calc, '${tinyChain(1)} × 0 =');
+      expect(calc.phase, CalcPhase.result);
+      expect(calc.display, '0');
+    });
+
+    test('recalling an invalid value is rejected as an invalid number', () {
+      press(calc, '3 +');
+      calc.recall(const HistoryEntry(chain: 'corrupt', result: double.nan));
+      expect(calc.error, CalcError.invalidNumber);
+      press(calc, '<'); // nothing was lost
+      expect(calc.expression, '3 +');
+      calc.recall(
+        const HistoryEntry(chain: 'corrupt', result: double.infinity),
+      );
+      expect(calc.error, CalcError.invalidNumber);
+    });
+
+    test('a digit starts over and AC resets from any error', () {
+      press(calc, '1 ÷ 0 = 7');
+      expect(calc.display, '7');
+      expect(calc.error, isNull);
+      press(calc, 'C 1 ÷ 0 = C');
+      expect(calc.phase, CalcPhase.ready);
+      expect(calc.hint, isNull);
+    });
+
+    test('operators and equals are refused during an error', () {
+      press(calc, '1 ÷ 0 =');
+      press(calc, '+');
+      expect(calc.lastTransition!.rejected, isTrue);
+      press(calc, '=');
+      expect(calc.lastTransition!.rejected, isTrue);
+      expect(calc.error, CalcError.divideByZero);
+    });
+
+    test('errors are not added to history', () {
+      press(calc, '1 ÷ 0 = C ${bigChain(6)} =');
+      expect(calc.history, isEmpty);
+    });
+  });
+
+  group('Input validation feedback', () {
+    test('second decimal point is refused with a hint', () {
+      press(calc, '3.1.');
+      expect(calc.lastTransition!.rejected, isTrue);
+      expect(calc.hint, 'A number can only have one decimal point');
+      expect(calc.display, '3.1');
+    });
+
+    test('digit limit is refused with a hint', () {
+      press(calc, '1' * 16);
+      expect(calc.lastTransition!.rejected, isTrue);
+      expect(calc.hint, 'Numbers can have up to 15 digits');
+    });
+
+    test('equals while awaiting an operand is refused with a hint', () {
+      press(calc, '7 + =');
+      expect(calc.lastTransition!.rejected, isTrue);
+      expect(calc.hint, 'Enter a number after +');
+    });
+
+    test('equals with no operator is refused with a hint', () {
+      press(calc, '42 =');
+      expect(calc.hint, 'Choose an operator first');
+    });
+
+    test('the hint clears on the next accepted key', () {
+      press(calc, '3.1. 4');
+      expect(calc.hint, isNull);
+      expect(calc.lastTransition!.rejected, isFalse);
+    });
+
+    test('accepted inputs are never marked rejected', () {
+      press(calc, '2 + 3 × 4 = C 9 + × 2 =');
+      expect(calc.tape.where((t) => t.rejected), isEmpty);
     });
   });
 

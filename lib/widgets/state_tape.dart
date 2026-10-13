@@ -49,15 +49,28 @@ class StateTape extends StatelessWidget {
                     border: Border.all(color: scheme.outlineVariant),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Text(t.input, style: mono.copyWith(fontWeight: FontWeight.bold)),
+                  child: Text(
+                    t.input,
+                    style: mono.copyWith(fontWeight: FontWeight.bold),
+                  ),
                 ),
                 const SizedBox(width: 8),
-                Text(t.from.label, style: mono.copyWith(color: t.from.color(scheme))),
+                Text(
+                  t.from.label,
+                  style: mono.copyWith(color: t.from.color(scheme)),
+                ),
                 Text(' → ', style: mono),
-                Text(t.to.label, style: mono.copyWith(color: t.to.color(scheme))),
+                Text(
+                  t.to.label,
+                  style: mono.copyWith(color: t.to.color(scheme)),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(t.note, style: mono, overflow: TextOverflow.ellipsis),
+                  child: Text(
+                    t.note,
+                    style: mono,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),

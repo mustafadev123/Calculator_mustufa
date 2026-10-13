@@ -61,7 +61,11 @@ class HistorySheet extends StatelessWidget {
                     controller: controller,
                     children: [
                       const SizedBox(height: 48),
-                      Icon(Icons.history_toggle_off, size: 48, color: scheme.outline),
+                      Icon(
+                        Icons.history_toggle_off,
+                        size: 48,
+                        color: scheme.outline,
+                      ),
                       const SizedBox(height: 12),
                       Text(
                         'No calculations yet',
@@ -76,7 +80,8 @@ class HistorySheet extends StatelessWidget {
                     controller: controller,
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: entries.length,
-                    separatorBuilder: (_, _) => const Divider(indent: 20, endIndent: 20, height: 1),
+                    separatorBuilder: (_, _) =>
+                        const Divider(indent: 20, endIndent: 20, height: 1),
                     itemBuilder: (context, i) {
                       final item = entries[i];
                       final result = CalculatorEngine.format(item.result);
@@ -90,7 +95,10 @@ class HistorySheet extends StatelessWidget {
                           key: Key('history_item_$i'),
                           onTap: () => _recall(context, item),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
@@ -99,8 +107,9 @@ class HistorySheet extends StatelessWidget {
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   textAlign: TextAlign.right,
-                                  style: theme.textTheme.bodyMedium
-                                      ?.copyWith(color: scheme.onSurfaceVariant),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                  ),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(

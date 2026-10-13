@@ -20,30 +20,36 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   final CalculatorEngine _engine = CalculatorEngine();
   bool _showTape = false;
 
-  /// Bumped when a key press is refused; makes the display shake.
+  /// Bumped when a key press is refused or fails; makes the display shake.
   int _shakeTick = 0;
 
+  /// Applies one engine action, then gives "no" feedback if the engine
+  /// refused the input or the step ended in a new error.
   void _run(void Function(CalculatorEngine engine) action) {
-    setState(() => action(_engine));
-  }
-
-  void _backspace() {
     setState(() {
-      if (!_engine.backspace()) {
-        HapticFeedback.vibrate();
+      final wasError = _engine.phase == CalcPhase.error;
+      action(_engine);
+      final last = _engine.lastTransition;
+      final newError = !wasError && _engine.phase == CalcPhase.error;
+      if (last != null && (last.rejected || newError)) {
+        newError ? HapticFeedback.heavyImpact() : HapticFeedback.vibrate();
         _shakeTick++;
       }
     });
   }
 
+  void _backspace() => _run((e) => e.backspace());
+
   void _backspaceHold() {
     _run((e) => e.allClear(fromLongPress: true));
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(
-        content: Text('All cleared'),
-        duration: Duration(milliseconds: 1200),
-      ));
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('All cleared'),
+          duration: Duration(milliseconds: 1200),
+        ),
+      );
   }
 
   void _openHistory() {
@@ -64,14 +70,18 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     setState(() => removed = _engine.clearHistory());
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text('Cleared ${removed.length} '
-            '${removed.length == 1 ? 'calculation' : 'calculations'}'),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () => setState(() => _engine.restoreHistory(removed)),
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            'Cleared ${removed.length} '
+            '${removed.length == 1 ? 'calculation' : 'calculations'}',
+          ),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () => setState(() => _engine.restoreHistory(removed)),
+          ),
         ),
-      ));
+      );
   }
 
   @override

@@ -46,7 +46,16 @@ void main() {
 
   testWidgets('decimal keys: 1.5 × 1.5 = 2.25', (tester) async {
     await tester.pumpWidget(const CalculatorApp());
-    await tapKeys(tester, ['1', 'decimal', '5', 'multiply', '1', 'decimal', '5', 'equals']);
+    await tapKeys(tester, [
+      '1',
+      'decimal',
+      '5',
+      'multiply',
+      '1',
+      'decimal',
+      '5',
+      'equals',
+    ]);
     expect(displayText(tester), '2.25');
   });
 
@@ -58,17 +67,30 @@ void main() {
     expect(phaseText(tester), 'READY');
   });
 
-  testWidgets('pending operator is marked selected for accessibility', (tester) async {
+  testWidgets('pending operator is marked selected for accessibility', (
+    tester,
+  ) async {
     final handle = tester.ensureSemantics();
     await tester.pumpWidget(const CalculatorApp());
     await tapKeys(tester, ['7', 'add']);
     expect(
       tester.getSemantics(find.bySemanticsLabel('plus')),
-      matchesSemantics(label: 'plus', isButton: true, isSelected: true, hasSelectedState: true, hasTapAction: true),
+      matchesSemantics(
+        label: 'plus',
+        isButton: true,
+        isSelected: true,
+        hasSelectedState: true,
+        hasTapAction: true,
+      ),
     );
     expect(
       tester.getSemantics(find.bySemanticsLabel('minus')),
-      matchesSemantics(label: 'minus', isButton: true, hasSelectedState: true, hasTapAction: true),
+      matchesSemantics(
+        label: 'minus',
+        isButton: true,
+        hasSelectedState: true,
+        hasTapAction: true,
+      ),
     );
     handle.dispose();
   });
@@ -90,7 +112,9 @@ void main() {
       expect(find.byKey(const Key('history_empty')), findsOneWidget);
     });
 
-    testWidgets('lists calculations newest first with a count badge', (tester) async {
+    testWidgets('lists calculations newest first with a count badge', (
+      tester,
+    ) async {
       await tester.pumpWidget(const CalculatorApp());
       await tapKeys(tester, ['2', 'add', '3', 'multiply', '4', 'equals']);
       await tapKeys(tester, ['9', 'subtract', '1', 'equals']);
@@ -110,7 +134,9 @@ void main() {
       );
     });
 
-    testWidgets('tapping an entry reuses its result in the pending operation', (tester) async {
+    testWidgets('tapping an entry reuses its result in the pending operation', (
+      tester,
+    ) async {
       await tester.pumpWidget(const CalculatorApp());
       await tapKeys(tester, ['2', 'add', '3', 'multiply', '4', 'equals']);
       await tapKeys(tester, ['ac', '5', 'add']);
@@ -120,7 +146,10 @@ void main() {
       await tester.tap(find.byKey(const Key('history_item_0')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('history_list')), findsNothing); // sheet closed
+      expect(
+        find.byKey(const Key('history_list')),
+        findsNothing,
+      ); // sheet closed
       expect(displayText(tester), '20');
       expect(expressionText(tester), '5 +');
       await tapKeys(tester, ['equals']);
@@ -153,7 +182,9 @@ void main() {
       expect(displayText(tester), '45');
     });
 
-    testWidgets('long-press clears everything with a confirmation', (tester) async {
+    testWidgets('long-press clears everything with a confirmation', (
+      tester,
+    ) async {
       await tester.pumpWidget(const CalculatorApp());
       await tapKeys(tester, ['9', 'multiply', '9']);
       await tester.longPress(find.byKey(const Key('key_backspace')));
@@ -164,7 +195,9 @@ void main() {
       expect(find.text('All cleared'), findsOneWidget);
     });
 
-    testWidgets('refused delete on a result shakes the display', (tester) async {
+    testWidgets('refused delete on a result shakes the display', (
+      tester,
+    ) async {
       await tester.pumpWidget(const CalculatorApp());
       await tapKeys(tester, ['2', 'add', '2', 'equals']);
       final panel = find.byKey(const Key('display_value'));
@@ -198,6 +231,58 @@ void main() {
     });
   });
 
+  group('Error feedback', () {
+    String hintText(WidgetTester tester) =>
+        tester.widget<Text>(find.byKey(const Key('display_hint'))).data!;
+
+    testWidgets('÷ 0 shows the error, hint and ERROR phase; ⌫ recovers', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const CalculatorApp());
+      await tapKeys(tester, ['8', 'divide', '0', 'equals']);
+      expect(displayText(tester), 'Can\'t divide by zero');
+      expect(phaseText(tester), 'ERROR');
+      expect(hintText(tester), contains('⌫'));
+
+      await tapKeys(tester, ['backspace', 'backspace', '2', 'equals']);
+      expect(displayText(tester), '4');
+      expect(find.byKey(const Key('display_hint')), findsNothing);
+    });
+
+    testWidgets('refused decimal point shows a hint and shakes', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const CalculatorApp());
+      await tapKeys(tester, ['1', 'decimal', '5']);
+      final value = find.byKey(const Key('display_value'));
+      final restX = tester.getTopLeft(value).dx;
+
+      await tester.tap(find.byKey(const Key('key_decimal')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(tester.getTopLeft(value).dx, isNot(restX));
+      await tester.pumpAndSettle();
+
+      expect(hintText(tester), 'A number can only have one decimal point');
+      expect(displayText(tester), '1.5');
+    });
+
+    testWidgets('error hint is exposed to screen readers', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(const CalculatorApp());
+      await tapKeys(tester, ['5', 'divide', '0', 'equals']);
+      expect(
+        find.bySemanticsLabel(RegExp('Error: Can\'t divide by zero')),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(RegExp('change the divisor')),
+        findsOneWidget,
+      );
+      handle.dispose();
+    });
+  });
+
   testWidgets('fits a small 320×568 screen with the tape open', (tester) async {
     tester.view.physicalSize = const Size(320, 568);
     tester.view.devicePixelRatio = 1;
@@ -206,7 +291,20 @@ void main() {
     await tester.pumpWidget(const CalculatorApp());
     await tester.tap(find.byKey(const Key('tape_toggle')));
     await tester.pumpAndSettle();
-    await tapKeys(tester, ['9', '9', '9', '9', '9', '9', '9', '9', '9', 'multiply', '9', 'equals']);
+    await tapKeys(tester, [
+      '9',
+      '9',
+      '9',
+      '9',
+      '9',
+      '9',
+      '9',
+      '9',
+      '9',
+      'multiply',
+      '9',
+      'equals',
+    ]);
 
     expect(tester.takeException(), isNull);
     expect(displayText(tester), '8999999991');

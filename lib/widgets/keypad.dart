@@ -36,24 +36,28 @@ class Keypad extends StatelessWidget {
   };
 
   Widget _digit(int d, {int flex = 1}) => CalcButton(
-        key: Key('key_$d'),
-        label: '$d',
-        semanticLabel: '$d',
-        flex: flex,
-        onPressed: () => onDigit(d),
-      );
+    key: Key('key_$d'),
+    label: '$d',
+    semanticLabel: '$d',
+    flex: flex,
+    onPressed: () => onDigit(d),
+  );
 
   Widget _operator(Operator op) => CalcButton(
-        key: Key('key_${op.name}'),
-        label: op.symbol,
-        semanticLabel: _spoken[op]!,
-        kind: CalcButtonKind.operator,
-        selected: pendingOperator == op,
-        onPressed: () => onOperator(op),
-      );
+    key: Key('key_${op.name}'),
+    label: op.symbol,
+    semanticLabel: _spoken[op]!,
+    kind: CalcButtonKind.operator,
+    selected: pendingOperator == op,
+    onPressed: () => onOperator(op),
+  );
 
-  Widget _row(List<Widget> children) =>
-      Expanded(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: children));
+  Widget _row(List<Widget> children) => Expanded(
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
