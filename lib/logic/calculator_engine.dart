@@ -58,12 +58,27 @@ class Transition {
   String toString() => '$input: ${from.name} → ${to.name} [$display] $note';
 }
 
+/// A finished calculation, e.g. `2 + 3 × 4` → `20`.
+class HistoryEntry {
+  const HistoryEntry({required this.chain, required this.result});
+
+  /// The full left-to-right chain that was evaluated, without `=`.
+  final String chain;
+  final double result;
+
+  @override
+  String toString() => '$chain = ${CalculatorEngine.format(result)}';
+}
+
 class CalculatorEngine {
   /// Longest operand we accept, counting digits only.
   static const int maxDigits = 15;
 
   /// How many transitions the tape keeps before dropping the oldest.
   static const int tapeLength = 50;
+
+  /// How many finished calculations history keeps.
+  static const int historyLength = 100;
 
   double? _accumulator;
   String _entry = '0';
@@ -72,6 +87,16 @@ class CalculatorEngine {
   String? _errorMessage;
   String _lastExpression = '';
   final List<Transition> _tape = [];
+
+  /// Everything applied so far in this calculation, e.g. `2 + 3 × 4`.
+  String _chain = '';
+
+  /// True when [_entry] holds a recalled result rather than typed digits, so
+  /// the next digit replaces it instead of appending (`20` + `1` ≠ `201`).
+  bool _entryRecalled = false;
+
+  /// Oldest first; the UI shows it reversed.
+  final List<HistoryEntry> _history = [];
 
   // ---------------------------------------------------------------------------
   // Read-only view of the state
@@ -84,6 +109,7 @@ class CalculatorEngine {
   String? get errorMessage => _errorMessage;
   List<Transition> get tape => List.unmodifiable(_tape);
   Transition? get lastTransition => _tape.isEmpty ? null : _tape.last;
+  List<HistoryEntry> get history => List.unmodifiable(_history);
 
   /// Main display, derived from the phase.
   String get display => switch (_phase) {
@@ -122,6 +148,11 @@ class CalculatorEngine {
           _phase = CalcPhase.enteringOperand;
           return 'start operand';
         case CalcPhase.enteringOperand:
+          if (_entryRecalled) {
+            _entry = d;
+            _entryRecalled = false;
+            return 'replace recalled value';
+          }
           if (_entry == '0') {
             _entry = d;
             return 'replace leading 0';
@@ -150,6 +181,11 @@ class CalculatorEngine {
           _phase = CalcPhase.enteringOperand;
           return 'start operand at 0.';
         case CalcPhase.enteringOperand:
+          if (_entryRecalled) {
+            _entry = '0.';
+            _entryRecalled = false;
+            return 'replace recalled value';
+          }
           if (_entry.contains('.')) return 'ignored: already has a point';
           _entry += '.';
           return 'append point';
@@ -167,6 +203,7 @@ class CalculatorEngine {
           _pending = op;
           return 'replace ${old.symbol} with ${op.symbol}';
         case CalcPhase.result:
+          _chain = format(_accumulator!);
           _pending = op;
           _phase = CalcPhase.awaitingOperand;
           return 'continue from result';
@@ -176,15 +213,18 @@ class CalculatorEngine {
           final String note;
           if (_pending == null) {
             _accumulator = operand;
+            _chain = format(operand);
             note = 'store ${format(operand)}';
           } else {
             final before = _accumulator!;
             final value = _apply(before, _pending!, operand);
             if (value == null) return 'error: $_errorMessage';
             _accumulator = value;
+            _chain += ' ${_pending!.symbol} ${format(operand)}';
             note = 'apply ${format(before)} ${_pending!.symbol} '
                 '${format(operand)} = ${format(value)}';
           }
+          _entryRecalled = false;
           _pending = op;
           _phase = CalcPhase.awaitingOperand;
           return note;
@@ -207,11 +247,56 @@ class CalculatorEngine {
       if (value == null) return 'error: $_errorMessage';
       _lastExpression =
           '${format(before)} ${op.symbol} ${format(operand)} =';
+      _chain += ' ${op.symbol} ${format(operand)}';
+      _addHistory(HistoryEntry(chain: _chain, result: value));
       _accumulator = value;
       _pending = null;
+      _entryRecalled = false;
       _phase = CalcPhase.result;
       return 'finish ${format(value)}';
     });
+  }
+
+  /// Reuses a history result as the current operand. With an operator
+  /// pending it fills the next operand (`5 ×` + recall 4 → `5 × 4`);
+  /// otherwise it starts a fresh calculation from that value.
+  void recall(HistoryEntry item) {
+    final text = format(item.result);
+    _step('↺', () {
+      final String note;
+      if (_phase == CalcPhase.awaitingOperand ||
+          (_phase == CalcPhase.enteringOperand && _pending != null)) {
+        note = 'recall $text as operand';
+      } else {
+        _reset();
+        note = 'recall $text, fresh calculation';
+      }
+      _entry = text;
+      _entryRecalled = true;
+      _phase = CalcPhase.enteringOperand;
+      return note;
+    });
+  }
+
+  /// Empties history and returns what was removed, so the UI can offer undo.
+  /// Does not touch the current calculation.
+  List<HistoryEntry> clearHistory() {
+    final removed = List<HistoryEntry>.of(_history);
+    _history.clear();
+    return removed;
+  }
+
+  /// Puts back entries from [clearHistory], ahead of anything added since.
+  void restoreHistory(List<HistoryEntry> entries) {
+    _history.insertAll(0, entries);
+    if (_history.length > historyLength) {
+      _history.removeRange(0, _history.length - historyLength);
+    }
+  }
+
+  void _addHistory(HistoryEntry item) {
+    _history.add(item);
+    if (_history.length > historyLength) _history.removeAt(0);
   }
 
   /// AC: wipes operand, accumulator, pending operator and result phase.
@@ -248,6 +333,8 @@ class CalculatorEngine {
     _phase = CalcPhase.ready;
     _errorMessage = null;
     _lastExpression = '';
+    _chain = '';
+    _entryRecalled = false;
   }
 
   /// Applies one operation, or moves to [CalcPhase.error] and returns null.

@@ -82,6 +82,70 @@ void main() {
     expect(find.text('apply 2 + 3 = 5'), findsOneWidget);
   });
 
+  group('History sheet', () {
+    testWidgets('shows an empty state before any calculation', (tester) async {
+      await tester.pumpWidget(const CalculatorApp());
+      await tester.tap(find.byKey(const Key('history_open')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('history_empty')), findsOneWidget);
+    });
+
+    testWidgets('lists calculations newest first with a count badge', (tester) async {
+      await tester.pumpWidget(const CalculatorApp());
+      await tapKeys(tester, ['2', 'add', '3', 'multiply', '4', 'equals']);
+      await tapKeys(tester, ['9', 'subtract', '1', 'equals']);
+      expect(
+        find.descendant(of: find.byType(Badge), matching: find.text('2')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('history_open')));
+      await tester.pumpAndSettle();
+      expect(find.text('2 + 3 × 4'), findsOneWidget);
+      expect(find.text('= 20'), findsOneWidget);
+      expect(find.text('9 − 1'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('9 − 1')).dy,
+        lessThan(tester.getTopLeft(find.text('2 + 3 × 4')).dy),
+      );
+    });
+
+    testWidgets('tapping an entry reuses its result in the pending operation', (tester) async {
+      await tester.pumpWidget(const CalculatorApp());
+      await tapKeys(tester, ['2', 'add', '3', 'multiply', '4', 'equals']);
+      await tapKeys(tester, ['ac', '5', 'add']);
+
+      await tester.tap(find.byKey(const Key('history_open')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('history_item_0')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('history_list')), findsNothing); // sheet closed
+      expect(displayText(tester), '20');
+      expect(expressionText(tester), '5 +');
+      await tapKeys(tester, ['equals']);
+      expect(displayText(tester), '25');
+    });
+
+    testWidgets('clear empties history and Undo restores it', (tester) async {
+      await tester.pumpWidget(const CalculatorApp());
+      await tapKeys(tester, ['6', 'multiply', '7', 'equals']);
+
+      await tester.tap(find.byKey(const Key('history_open')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('history_clear')));
+      await tester.pumpAndSettle();
+      expect(find.text('Cleared 1 calculation'), findsOneWidget);
+      expect(displayText(tester), '42'); // calculation untouched
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('history_open')));
+      await tester.pumpAndSettle();
+      expect(find.text('6 × 7'), findsOneWidget);
+    });
+  });
+
   testWidgets('fits a small 320×568 screen with the tape open', (tester) async {
     tester.view.physicalSize = const Size(320, 568);
     tester.view.devicePixelRatio = 1;

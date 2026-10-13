@@ -205,6 +205,97 @@ void main() {
     });
   });
 
+  group('Calculation history (graduate feature)', () {
+    test('equals records the full left-to-right chain and result', () {
+      press(calc, '2 + 3 × 4 =');
+      expect(calc.history, hasLength(1));
+      expect(calc.history.single.chain, '2 + 3 × 4');
+      expect(calc.history.single.result, 20);
+      expect(calc.history.single.toString(), '2 + 3 × 4 = 20');
+    });
+
+    test('replaced operator is recorded as the one actually used', () {
+      press(calc, '9 + × 2 =');
+      expect(calc.history.single.toString(), '9 × 2 = 18');
+    });
+
+    test('continuing from a result starts the chain at that result', () {
+      press(calc, '4 + 4 = − 3 =');
+      expect(calc.history.map((h) => h.toString()), ['4 + 4 = 8', '8 − 3 = 5']);
+    });
+
+    test('ignored equals and errors are not recorded', () {
+      press(calc, '7 + = C 42 = C 8 ÷ 0 =');
+      expect(calc.history, isEmpty);
+    });
+
+    test('AC keeps history', () {
+      press(calc, '1 + 1 = C');
+      expect(calc.history, hasLength(1));
+    });
+
+    test('recall after a result starts a fresh calculation', () {
+      press(calc, '6 × 7 = C 1 + 1 =');
+      calc.recall(calc.history.first); // 42
+      expect(calc.display, '42');
+      expect(calc.accumulator, isNull);
+      expect(calc.phase, CalcPhase.enteringOperand);
+      press(calc, '+ 8 =');
+      expect(calc.display, '50');
+    });
+
+    test('recall while an operator is pending fills the next operand', () {
+      press(calc, '2.5 + 2.5 = C 10 ×');
+      calc.recall(calc.history.single); // 5
+      expect(calc.expression, '10 ×');
+      expect(calc.display, '5');
+      press(calc, '=');
+      expect(calc.display, '50');
+      expect(calc.history.last.toString(), '10 × 5 = 50');
+    });
+
+    test('a digit after recall replaces the value instead of appending', () {
+      press(calc, '10 + 10 =');
+      calc.recall(calc.history.single);
+      press(calc, '3');
+      expect(calc.display, '3');
+      calc.recall(calc.history.single);
+      press(calc, '.');
+      expect(calc.display, '0.');
+    });
+
+    test('recall is recorded on the tape', () {
+      press(calc, '3 + 3 =');
+      calc.recall(calc.history.single);
+      expect(calc.lastTransition!.input, '↺');
+      expect(calc.lastTransition!.note, 'recall 6, fresh calculation');
+    });
+
+    test('clearHistory empties the list and leaves the calculation alone', () {
+      press(calc, '1 + 2 = 5 ×');
+      final removed = calc.clearHistory();
+      expect(removed, hasLength(1));
+      expect(calc.history, isEmpty);
+      expect(calc.display, '5');
+      expect(calc.pendingOperator, Operator.multiply);
+    });
+
+    test('restoreHistory undoes a clear, keeping newer entries last', () {
+      press(calc, '1 + 1 = 2 + 2 =');
+      final removed = calc.clearHistory();
+      press(calc, '3 + 3 =');
+      calc.restoreHistory(removed);
+      expect(calc.history.map((h) => h.result), [2, 4, 6]);
+    });
+
+    test('keeps only the most recent entries', () {
+      for (var i = 0; i < CalculatorEngine.historyLength + 5; i++) {
+        press(calc, '1 + 1 =');
+      }
+      expect(calc.history, hasLength(CalculatorEngine.historyLength));
+    });
+  });
+
   group('Transition tape', () {
     test('records each key with from/to phases', () {
       press(calc, '2 +');

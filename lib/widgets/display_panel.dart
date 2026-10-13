@@ -12,11 +12,13 @@ class DisplayPanel extends StatelessWidget {
     required this.engine,
     required this.showTape,
     required this.onToggleTape,
+    required this.onOpenHistory,
   });
 
   final CalculatorEngine engine;
   final bool showTape;
   final VoidCallback onToggleTape;
+  final VoidCallback onOpenHistory;
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +41,17 @@ class DisplayPanel extends StatelessWidget {
             children: [
               _PhaseChip(phase: phase),
               const Spacer(),
+              Badge.count(
+                count: engine.history.length,
+                isLabelVisible: engine.history.isNotEmpty,
+                child: IconButton.filledTonal(
+                  key: const Key('history_open'),
+                  onPressed: onOpenHistory,
+                  tooltip: 'History, ${engine.history.length} items',
+                  icon: const Icon(Icons.history),
+                ),
+              ),
+              const SizedBox(width: 4),
               IconButton.filledTonal(
                 key: const Key('tape_toggle'),
                 onPressed: onToggleTape,
