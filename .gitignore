@@ -49,3 +49,5 @@ app.*.map.json
 
 # Submission files uploaded separately
 *.docx
+*.apk
+github_link.txt
